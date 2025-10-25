@@ -83,3 +83,13 @@ The fifth version refactors the single-agent architecture into a more sophistica
 *   **Query Executor:** Runs the queries and handles potential errors.
 *   **Data Analyser:**  Summarizes the results from the executed queries to provide a concise analysis.
 This version represents a shift towards a more modular and powerful agent design.
+
+## API Endpoints
+
+The FastAPI application provides the following endpoints:
+
+*   `GET /`: Serves the HTML chat interface.
+*   `POST /chat`: Handles the chat logic and streams the agent's response.
+*   `GET /idle`: Returns the idle image for the agent's avatar.
+*   `GET /talk`: Returns the talking image for the agent's avatar.
+*   `GET /random_image`: Returns a random image from the `assets` folder.

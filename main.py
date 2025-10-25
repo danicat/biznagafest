@@ -1,15 +1,16 @@
 import os
 import asyncio
+import random
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai.types import Content, Part
 from dotenv import load_dotenv
 import vertexai
+from PIL import Image
 
 # --- Agent Definition ---
-# In a real project, you would import your agent from another file.
 from v4.agent import root_agent
 
 load_dotenv()
@@ -28,39 +29,133 @@ runner = Runner(
 )
 app = FastAPI()
 
+# --- Static assets ---
+@app.get("/idle")
+async def idle():
+    return FileResponse("assets/idle.png")
+
+@app.get("/talk")
+async def talk():
+    return FileResponse("assets/talk.png")
+
+@app.get("/think")
+async def think():
+    return FileResponse("assets/think.png")
+
+@app.get("/random_image")
+async def random_image():
+    images = os.listdir("assets")
+    random_image = random.choice(images)
+    return FileResponse(f"assets/{random_image}")
+
 
 # --- Web Interface (HTML) ---
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_ui():
     """Serves the simple HTML chat interface."""
-    return """
+    return r"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>ADK Chat</title>
+        <title>ADK Chat - Retro Edition</title>
         <style>
-            body { font-family: sans-serif; display: flex; justify-content: center; }
-            #chat-container { width: 80%; max-width: 800px; border: 1px solid #ccc; padding: 20px; }
-            #messages { height: 400px; overflow-y: scroll; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; }
+            body { 
+                font-family: 'Courier New', Courier, monospace; 
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                display: flex; 
+                justify-content: center; 
+                align-items: flex-start;
+                padding-top: 50px;
+            }
+            #main-container {
+                display: flex;
+                gap: 20px;
+            }
+            #chat-container { 
+                width: 600px; 
+                border: 2px solid #888; 
+                padding: 20px; 
+                background-color: #2d2d2d;
+                box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            }
+            #header {
+                text-align: center;
+                font-size: 24px;
+                margin-bottom: 20px;
+                color: #0f0;
+                text-shadow: 0 0 5px #0f0;
+            }
+            #messages { 
+                height: 400px; 
+                overflow-y: scroll; 
+                border: 1px solid #444; 
+                padding: 10px; 
+                margin-bottom: 10px; 
+                background-color: #111;
+            }
             #user-input { display: flex; }
-            #user-input input { flex-grow: 1; padding: 8px; }
-            #user-input button { padding: 8px 12px; }
-            .user-message { text-align: right; color: blue; }
-            .agent-message { color: green; }
+            #user-input input { 
+                flex-grow: 1; 
+                padding: 8px; 
+                background-color: #333;
+                border: 1px solid #555;
+                color: #d4d4d4;
+            }
+            #user-input button { 
+                padding: 8px 12px; 
+                background-color: #0a0;
+                color: #fff;
+                border: none;
+                cursor: pointer;
+            }
+            .user-message { text-align: right; color: #0ff; }
+            .agent-message { color: #0f0; }
+            #avatar-container {
+                width: 200px;
+                text-align: center;
+            }
+            #avatar-window {
+                width: 150px;
+                height: 150px;
+                border: 2px solid #888;
+                background-color: #111;
+                margin: 0 auto 10px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            #avatar-window img {
+                max-width: 100%;
+                max-height: 100%;
+            }
+            #avatar-label {
+                color: #0f0;
+                text-shadow: 0 0 5px #0f0;
+            }
         </style>
     </head>
     <body>
-        <div id="chat-container">
-            <h1>Agent Chat</h1>
-            <div id="messages"></div>
-            <form id="user-input" onsubmit="sendMessage(event)">
-                <input type="text" id="message-text" autocomplete="off" placeholder="Type your message..."/>
-                <button type="submit">Send</button>
-            </form>
+        <div id="main-container">
+            <div id="chat-container">
+                <div id="header">-- AGENT TERMINAL --</div>
+                <div id="messages"></div>
+                <form id="user-input" onsubmit="sendMessage(event)">
+                    <input type="text" id="message-text" autocomplete="off" placeholder="> Type your command..."/>
+                    <button type="submit">SEND</button>
+                </form>
+            </div>
+            <div id="avatar-container">
+                <div id="avatar-window">
+                    <img src="/idle" alt="Agent Avatar" id="avatar-img">
+                </div>
+                <div id="avatar-label">AGENT</div>
+            </div>
         </div>
         <script>
             const messagesDiv = document.getElementById('messages');
             const messageText = document.getElementById('message-text');
+            const avatarImg = document.getElementById('avatar-img');
 
             async function sendMessage(event) {
                 event.preventDefault();
@@ -70,15 +165,17 @@ async def get_chat_ui():
                 // Display user message
                 const userMsgDiv = document.createElement('div');
                 userMsgDiv.className = 'user-message';
-                userMsgDiv.textContent = `You: ${query}`;
+                userMsgDiv.textContent = `USER: ${query}`;
                 messagesDiv.appendChild(userMsgDiv);
                 messageText.value = '';
 
                 // Create a container for the agent's response
                 const agentMsgDiv = document.createElement('div');
                 agentMsgDiv.className = 'agent-message';
-                agentMsgDiv.textContent = 'Agent: ';
+                agentMsgDiv.textContent = 'AGENT: ';
                 messagesDiv.appendChild(agentMsgDiv);
+
+                avatarImg.src = '/think'; // Set to thinking pose
 
                 // Stream agent response
                 const response = await fetch('/chat', {
@@ -89,13 +186,60 @@ async def get_chat_ui():
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
-                    const chunk = decoder.decode(value);
-                    agentMsgDiv.textContent += chunk;
-                    messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
+                let wordQueue = [];
+                let isStreaming = true;
+
+                // Asynchronously read from the stream and populate the word queue
+                (async () => {
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) {
+                            isStreaming = false;
+                            break;
+                        }
+                        const chunk = decoder.decode(value, { stream: true });
+                        wordQueue.push(...chunk.split(/(\s+)/));
+                    }
+                })();
+
+                let animationInterval = null;
+
+                function startAnimation() {
+                    if (animationInterval) return; // Animation is already running
+                    let toggle = false;
+                    avatarImg.src = '/talk';
+                    animationInterval = setInterval(() => {
+                        toggle = !toggle;
+                        avatarImg.src = toggle ? '/talk' : '/idle';
+                    }, 200); // Faster animation speed
                 }
+
+                function stopAnimation() {
+                    clearInterval(animationInterval);
+                    animationInterval = null;
+                    avatarImg.src = '/idle';
+                }
+
+                function render() {
+                    if (wordQueue.length > 0) {
+                        startAnimation(); // Start or continue animation
+                        
+                        const word = wordQueue.shift();
+                        agentMsgDiv.textContent += word;
+                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                        
+                        setTimeout(render, 50); // Faster typing speed
+                    } else if (isStreaming) {
+                        // Word queue is empty, but more words might be coming.
+                        // Do nothing to the animation, let it stay in 'thinking' mode.
+                        setTimeout(render, 100);
+                    } else {
+                        // No more words and the stream is done
+                        stopAnimation(); // Ensure animation is stopped
+                    }
+                }
+
+                render(); // Start the rendering loop
             }
         </script>
     </body>
