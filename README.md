@@ -15,7 +15,7 @@ The project includes a FastAPI web application that serves a simple chat interfa
 
 ### Prerequisites
 
-*   Python 3.7+
+*   Python 3.12+
 *   pip
 *   [osquery](https://osquery.io/downloads/official/)
 
